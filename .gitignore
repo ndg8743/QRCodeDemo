@@ -21,9 +21,6 @@ venv/
 *.bcf
 *.run.xml
 
-# PDF (generated from LaTeX)
-*.pdf
-
 # IDE
 .vscode/
 .idea/
