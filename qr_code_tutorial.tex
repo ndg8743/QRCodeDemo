@@ -1,0 +1,1926 @@
+\documentclass[11pt,a4paper]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{fancyhdr}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{tikz}
+\usepackage{tcolorbox}
+
+% Page geometry
+\geometry{margin=1in}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{QR Code Generation Tutorial}
+\lhead{\leftmark}
+\rfoot{Page \thepage}
+
+% Code listing style
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+% Custom theorem environments
+\theoremstyle{definition}
+\newtheorem{definition}{Definition}[section]
+\newtheorem{example}{Example}[section]
+\theoremstyle{plain}
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}{Proposition}[section]
+
+% Custom tcolorbox for notes
+\newtcolorbox{notebox}{
+    colback=blue!5!white,
+    colframe=blue!75!black,
+    title=Note
+}
+
+\newtcolorbox{warningbox}{
+    colback=yellow!5!white,
+    colframe=orange!75!black,
+    title=Important
+}
+
+% Title information
+\title{\Huge \textbf{Building a QR Code Generator from Scratch}\\[0.5em]
+\Large A Mathematical and Algorithmic Tutorial in Python}
+\author{Tutorial Document\\[0.5em]
+\small Based on ISO/IEC 18004 Standard}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This tutorial provides a comprehensive guide to implementing a QR code generator from first principles. We cover the complete mathematical foundations including Galois field arithmetic, Reed-Solomon error correction, and BCH codes. Each section includes theoretical background, mathematical derivations, and complete Python implementations. By the end of this tutorial, you will understand exactly how QR codes work and have built your own generator without relying on external libraries.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{Introduction}
+%==============================================================================
+
+QR (Quick Response) codes are two-dimensional matrix barcodes invented in 1994 by Masahiro Hara at Denso Wave, a subsidiary of Toyota. Unlike traditional barcodes that store information in one dimension, QR codes use a pattern of black and white modules arranged in a square grid to encode data in two dimensions.
+
+\subsection{Overview of the QR Code Generation Process}
+
+The QR code generation process consists of these main steps:
+
+\begin{enumerate}
+    \item \textbf{Data Analysis}: Determine the optimal encoding mode (numeric, alphanumeric, byte, or kanji)
+    \item \textbf{Data Encoding}: Convert the input data into a binary bitstream
+    \item \textbf{Error Correction}: Generate Reed-Solomon error correction codewords
+    \item \textbf{Structure Final Message}: Interleave data and error correction blocks
+    \item \textbf{Module Placement}: Place the data bits into the QR code matrix along with function patterns
+    \item \textbf{Data Masking}: Apply mask patterns to improve readability
+    \item \textbf{Format and Version Information}: Add metadata about error correction level and mask pattern
+\end{enumerate}
+
+\subsection{QR Code Versions and Capacity}
+
+QR codes come in 40 versions, where version 1 is $21 \times 21$ modules and each subsequent version adds 4 modules per side:
+
+\begin{equation}
+    \text{Size} = 4V + 17
+\end{equation}
+
+where $V$ is the version number (1-40). Version 40 is $177 \times 177$ modules.
+
+\begin{table}[h]
+\centering
+\caption{QR Code Version Sizes and Approximate Capacities (Error Correction Level L)}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Version & Size & Numeric & Alphanumeric & Bytes \\
+\midrule
+1 & $21 \times 21$ & 41 & 25 & 17 \\
+2 & $25 \times 25$ & 77 & 47 & 32 \\
+5 & $37 \times 37$ & 202 & 122 & 84 \\
+10 & $57 \times 57$ & 652 & 395 & 271 \\
+40 & $177 \times 177$ & 7,089 & 4,296 & 2,953 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Error Correction Levels}
+
+QR codes support four error correction levels, each providing different recovery capabilities:
+
+\begin{table}[h]
+\centering
+\caption{Error Correction Levels}
+\begin{tabular}{@{}lcl@{}}
+\toprule
+Level & Recovery Capacity & Use Case \\
+\midrule
+L (Low) & $\sim 7\%$ & Maximum data capacity \\
+M (Medium) & $\sim 15\%$ & General purpose \\
+Q (Quartile) & $\sim 25\%$ & Industrial applications \\
+H (High) & $\sim 30\%$ & Harsh environments, logos \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{References for This Section}
+
+\begin{itemize}
+    \item ISO/IEC 18004:2015 - QR Code bar code symbology specification
+    \item Wikipedia: QR Code (\url{https://en.wikipedia.org/wiki/QR_code})
+    \item Thonky's QR Code Tutorial (\url{https://www.thonky.com/qr-code-tutorial/})
+\end{itemize}
+
+%==============================================================================
+\section{Mathematical Foundations: Galois Field Arithmetic}
+%==============================================================================
+
+The heart of QR code error correction relies on arithmetic in \textbf{Galois Fields} (finite fields). QR codes use $GF(2^8)$, also written as $GF(256)$, which contains exactly 256 elements.
+
+\subsection{What is a Galois Field?}
+
+\begin{definition}[Galois Field]
+A Galois Field $GF(p^n)$ is a finite field containing exactly $p^n$ elements, where $p$ is a prime number (called the characteristic) and $n$ is a positive integer. For QR codes, we use $GF(2^8)$ with $p=2$ and $n=8$.
+\end{definition}
+
+In $GF(2^8)$, elements are represented as polynomials of degree at most 7 with coefficients in $GF(2) = \{0, 1\}$:
+
+\begin{equation}
+    a_7 x^7 + a_6 x^6 + a_5 x^5 + a_4 x^4 + a_3 x^3 + a_2 x^2 + a_1 x + a_0
+\end{equation}
+
+where each $a_i \in \{0, 1\}$. This maps naturally to 8-bit bytes.
+
+\subsection{The Primitive Polynomial}
+
+To define multiplication in $GF(256)$, we need an \textbf{irreducible primitive polynomial}. QR codes use:
+
+\begin{equation}
+    p(x) = x^8 + x^4 + x^3 + x^2 + 1
+\end{equation}
+
+In binary, this is $100011101_2 = 285_{10}$ (the standard notation includes the $x^8$ term).
+
+\begin{notebox}
+The primitive polynomial defines how we ``wrap around'' when multiplication would produce a result with degree 8 or higher. We take the remainder when dividing by $p(x)$.
+\end{notebox}
+
+\subsection{Addition in GF(256)}
+
+Addition in $GF(2^8)$ is performed coefficient-wise modulo 2, which is simply the XOR operation:
+
+\begin{equation}
+    a + b = a \oplus b
+\end{equation}
+
+\begin{example}
+Let $a = 83 = 01010011_2$ and $b = 202 = 11001010_2$:
+\begin{align}
+    a + b &= 01010011_2 \oplus 11001010_2 \\
+          &= 10011001_2 = 153
+\end{align}
+\end{example}
+
+\begin{warningbox}
+In $GF(2^8)$, subtraction is identical to addition! Since $-1 \equiv 1 \pmod{2}$, we have $a - b = a + b = a \oplus b$.
+\end{warningbox}
+
+\subsection{Multiplication in GF(256)}
+
+Multiplication is polynomial multiplication modulo the primitive polynomial $p(x)$.
+
+\subsubsection{Direct Polynomial Multiplication}
+
+Given two polynomials $a(x)$ and $b(x)$:
+\begin{enumerate}
+    \item Multiply them as regular polynomials (using XOR for coefficient addition)
+    \item If the result has degree $\geq 8$, reduce modulo $p(x)$
+\end{enumerate}
+
+\begin{example}
+Multiply $a = 83$ and $b = 202$ in $GF(256)$:
+
+First, express as polynomials:
+\begin{align}
+    a(x) &= x^6 + x^4 + x + 1 \\
+    b(x) &= x^7 + x^6 + x^3 + x
+\end{align}
+
+Multiply and reduce modulo $p(x) = x^8 + x^4 + x^3 + x^2 + 1$.
+\end{example}
+
+\subsubsection{Logarithm Table Method (Efficient)}
+
+Since $GF(256)^* = \{1, 2, \ldots, 255\}$ is a cyclic group, every non-zero element can be expressed as a power of a primitive element $\alpha$ (typically $\alpha = 2$):
+
+\begin{equation}
+    a = \alpha^{\log_\alpha(a)}
+\end{equation}
+
+Then multiplication becomes:
+\begin{equation}
+    a \cdot b = \alpha^{(\log_\alpha(a) + \log_\alpha(b)) \mod 255}
+\end{equation}
+
+\subsection{Python Implementation: GF(256) Arithmetic}
+
+\begin{lstlisting}[language=Python, caption=Complete GF(256) Implementation]
+"""
+Galois Field GF(256) Implementation for QR Codes
+Based on the primitive polynomial: x^8 + x^4 + x^3 + x^2 + 1 (0x11d)
+"""
+
+class GF256:
+    """Galois Field GF(2^8) arithmetic for QR codes."""
+    
+    PRIMITIVE_POLY = 0x11d  # x^8 + x^4 + x^3 + x^2 + 1 = 285
+    
+    def __init__(self):
+        # Build exponential and logarithm tables
+        self.exp_table = [0] * 512  # Extended for convenience
+        self.log_table = [0] * 256
+        
+        self._build_tables()
+    
+    def _build_tables(self):
+        """Build exp and log lookup tables using alpha = 2."""
+        x = 1
+        for i in range(255):
+            self.exp_table[i] = x
+            self.exp_table[i + 255] = x  # Duplicate for modulo ease
+            self.log_table[x] = i
+            
+            # Multiply by alpha (2) with reduction
+            x = self._multiply_no_table(x, 2)
+        
+        self.log_table[0] = -1  # log(0) is undefined
+    
+    def _multiply_no_table(self, a, b):
+        """
+        Multiply two GF(256) elements without using tables.
+        Uses Russian peasant multiplication with polynomial reduction.
+        """
+        result = 0
+        while b > 0:
+            if b & 1:  # If lowest bit is set
+                result ^= a  # Add (XOR) a to result
+            b >>= 1
+            a <<= 1
+            if a & 0x100:  # If degree >= 8
+                a ^= self.PRIMITIVE_POLY  # Reduce modulo primitive
+        return result
+    
+    def add(self, a, b):
+        """Addition in GF(256) is XOR."""
+        return a ^ b
+    
+    def subtract(self, a, b):
+        """Subtraction in GF(256) is the same as addition."""
+        return a ^ b
+    
+    def multiply(self, a, b):
+        """Multiply two GF(256) elements using log tables."""
+        if a == 0 or b == 0:
+            return 0
+        return self.exp_table[self.log_table[a] + self.log_table[b]]
+    
+    def divide(self, a, b):
+        """Divide a by b in GF(256)."""
+        if b == 0:
+            raise ZeroDivisionError("Division by zero in GF(256)")
+        if a == 0:
+            return 0
+        return self.exp_table[(self.log_table[a] - self.log_table[b]) % 255]
+    
+    def power(self, a, n):
+        """Raise a to the power n in GF(256)."""
+        if a == 0:
+            return 0 if n > 0 else 1
+        return self.exp_table[(self.log_table[a] * n) % 255]
+    
+    def inverse(self, a):
+        """Find multiplicative inverse of a in GF(256)."""
+        if a == 0:
+            raise ZeroDivisionError("No inverse for 0")
+        # a^(-1) = a^254 since a^255 = 1
+        return self.exp_table[255 - self.log_table[a]]
+
+
+# Create a global instance for convenience
+gf = GF256()
+
+
+def demo_gf256():
+    """Demonstrate GF(256) operations."""
+    print("=== GF(256) Arithmetic Demo ===\n")
+    
+    a, b = 83, 202
+    print(f"a = {a}, b = {b}")
+    print(f"a + b = {a} XOR {b} = {gf.add(a, b)}")
+    print(f"a * b = {gf.multiply(a, b)}")
+    print(f"a / b = {gf.divide(a, b)}")
+    print(f"a^10 = {gf.power(a, 10)}")
+    print(f"a^(-1) = {gf.inverse(a)}")
+    
+    # Verify: a * a^(-1) = 1
+    print(f"\nVerification: a * a^(-1) = {gf.multiply(a, gf.inverse(a))}")
+    
+    # Show first few elements of exp table
+    print(f"\nFirst 10 powers of alpha=2:")
+    for i in range(10):
+        print(f"  alpha^{i} = {gf.exp_table[i]}")
+
+
+if __name__ == "__main__":
+    demo_gf256()
+\end{lstlisting}
+
+\subsection{References for This Section}
+
+\begin{itemize}
+    \item Wikiversity: Reed-Solomon codes for coders (\url{https://en.wikiversity.org/wiki/Reed-Solomon_codes_for_coders})
+    \item Wikipedia: Finite field arithmetic (\url{https://en.wikipedia.org/wiki/Finite_field_arithmetic})
+    \item Research: Finite Field Arithmetic and Reed-Solomon Coding (\url{https://research.swtch.com/field})
+\end{itemize}
+
+%==============================================================================
+\section{Polynomial Operations in GF(256)}
+%==============================================================================
+
+Reed-Solomon codes work with polynomials whose coefficients are elements of $GF(256)$. We need to implement polynomial arithmetic for error correction.
+
+\subsection{Polynomial Representation}
+
+A polynomial is represented as a list of coefficients, where index $i$ corresponds to the coefficient of $x^i$:
+
+\begin{equation}
+    p(x) = c_0 + c_1 x + c_2 x^2 + \cdots + c_n x^n
+\end{equation}
+
+is stored as \texttt{[c\_0, c\_1, c\_2, ..., c\_n]}.
+
+\subsection{Polynomial Operations}
+
+\subsubsection{Addition}
+
+Add corresponding coefficients using GF(256) addition (XOR):
+
+\begin{equation}
+    (a + b)(x) = \sum_i (a_i \oplus b_i) x^i
+\end{equation}
+
+\subsubsection{Multiplication}
+
+Convolution of coefficient sequences:
+
+\begin{equation}
+    (a \cdot b)(x) = \sum_k \left( \sum_{i+j=k} a_i \cdot b_j \right) x^k
+\end{equation}
+
+where multiplication of coefficients is in $GF(256)$.
+
+\subsubsection{Division}
+
+Polynomial long division, giving quotient $q(x)$ and remainder $r(x)$ such that:
+
+\begin{equation}
+    a(x) = q(x) \cdot b(x) + r(x)
+\end{equation}
+
+\subsection{Python Implementation: Polynomial Operations}
+
+\begin{lstlisting}[language=Python, caption=Polynomial Operations in GF(256)]
+"""
+Polynomial operations over GF(256) for Reed-Solomon encoding.
+"""
+
+class Polynomial:
+    """Polynomial with coefficients in GF(256)."""
+    
+    def __init__(self, coefficients, gf_instance):
+        """
+        Initialize polynomial with coefficients.
+        coefficients[i] is the coefficient of x^i.
+        Leading zeros are trimmed.
+        """
+        self.gf = gf_instance
+        # Trim leading zeros (from the highest degree end)
+        self.coeffs = list(coefficients)
+        while len(self.coeffs) > 1 and self.coeffs[-1] == 0:
+            self.coeffs.pop()
+    
+    @property
+    def degree(self):
+        """Return the degree of the polynomial."""
+        return len(self.coeffs) - 1
+    
+    def __repr__(self):
+        terms = []
+        for i, c in enumerate(self.coeffs):
+            if c != 0:
+                if i == 0:
+                    terms.append(f"{c}")
+                elif i == 1:
+                    terms.append(f"{c}x")
+                else:
+                    terms.append(f"{c}x^{i}")
+        return " + ".join(terms) if terms else "0"
+    
+    def evaluate(self, x):
+        """Evaluate polynomial at x using Horner's method."""
+        result = 0
+        for coeff in reversed(self.coeffs):
+            result = self.gf.add(self.gf.multiply(result, x), coeff)
+        return result
+    
+    def add(self, other):
+        """Add two polynomials."""
+        # Pad shorter polynomial with zeros
+        max_len = max(len(self.coeffs), len(other.coeffs))
+        a = self.coeffs + [0] * (max_len - len(self.coeffs))
+        b = other.coeffs + [0] * (max_len - len(other.coeffs))
+        
+        result = [self.gf.add(a[i], b[i]) for i in range(max_len)]
+        return Polynomial(result, self.gf)
+    
+    def multiply(self, other):
+        """Multiply two polynomials."""
+        result = [0] * (len(self.coeffs) + len(other.coeffs) - 1)
+        
+        for i, a in enumerate(self.coeffs):
+            for j, b in enumerate(other.coeffs):
+                product = self.gf.multiply(a, b)
+                result[i + j] = self.gf.add(result[i + j], product)
+        
+        return Polynomial(result, self.gf)
+    
+    def scale(self, scalar):
+        """Multiply polynomial by a scalar."""
+        result = [self.gf.multiply(c, scalar) for c in self.coeffs]
+        return Polynomial(result, self.gf)
+    
+    def divide(self, divisor):
+        """
+        Divide self by divisor, returning (quotient, remainder).
+        Uses polynomial long division in GF(256).
+        """
+        if divisor.coeffs == [0] or len(divisor.coeffs) == 0:
+            raise ZeroDivisionError("Division by zero polynomial")
+        
+        # Work with copies in descending order (high degree first)
+        dividend = list(reversed(self.coeffs))
+        div = list(reversed(divisor.coeffs))
+        
+        if len(dividend) < len(div):
+            return Polynomial([0], self.gf), self
+        
+        quotient = []
+        
+        for i in range(len(dividend) - len(div) + 1):
+            # Coefficient of quotient term
+            coeff = self.gf.divide(dividend[i], div[0])
+            quotient.append(coeff)
+            
+            # Subtract divisor * coeff from dividend
+            for j in range(len(div)):
+                subtract = self.gf.multiply(div[j], coeff)
+                dividend[i + j] = self.gf.subtract(dividend[i + j], subtract)
+        
+        # Remainder is remaining non-zero terms
+        remainder = list(reversed(dividend[len(dividend) - len(div) + 1:]))
+        quotient = list(reversed(quotient))
+        
+        return Polynomial(quotient, self.gf), Polynomial(remainder, self.gf)
+    
+    def mod(self, divisor):
+        """Return self mod divisor (the remainder)."""
+        _, remainder = self.divide(divisor)
+        return remainder
+
+
+def demo_polynomials():
+    """Demonstrate polynomial operations."""
+    gf = GF256()
+    
+    # Create polynomials
+    p1 = Polynomial([1, 2, 3], gf)  # 1 + 2x + 3x^2
+    p2 = Polynomial([4, 5], gf)     # 4 + 5x
+    
+    print("=== Polynomial Operations Demo ===\n")
+    print(f"p1(x) = {p1}")
+    print(f"p2(x) = {p2}")
+    print(f"\np1 + p2 = {p1.add(p2)}")
+    print(f"p1 * p2 = {p1.multiply(p2)}")
+    
+    q, r = p1.divide(p2)
+    print(f"\np1 / p2 = {q} remainder {r}")
+    
+    # Evaluate at x=2
+    print(f"\np1(2) = {p1.evaluate(2)}")
+
+
+if __name__ == "__main__":
+    demo_polynomials()
+\end{lstlisting}
+
+%==============================================================================
+\section{Reed-Solomon Error Correction}
+%==============================================================================
+
+Reed-Solomon (RS) codes are the error-correcting codes used in QR codes. They work by adding redundant codewords that allow reconstruction of lost or corrupted data.
+
+\subsection{Theory of Reed-Solomon Codes}
+
+\begin{definition}[Reed-Solomon Code]
+An RS code RS$(n, k)$ over $GF(q)$ encodes $k$ data symbols into $n$ codewords, where $n - k$ symbols are error correction. It can correct up to $\lfloor (n-k)/2 \rfloor$ symbol errors.
+\end{definition}
+
+For QR codes:
+\begin{itemize}
+    \item The field is $GF(256)$ ($q = 256$)
+    \item Each symbol is one byte (8 bits)
+    \item The number of EC codewords depends on version and EC level
+\end{itemize}
+
+\subsection{The Generator Polynomial}
+
+The Reed-Solomon generator polynomial of degree $t$ (where $t$ is the number of EC codewords) is:
+
+\begin{equation}
+    g(x) = \prod_{i=0}^{t-1} (x - \alpha^i) = \prod_{i=0}^{t-1} (x + \alpha^i)
+\end{equation}
+
+In $GF(256)$, subtraction equals addition, so $(x - \alpha^i) = (x + \alpha^i)$.
+
+\begin{example}
+For 7 error correction codewords (Version 1, EC Level L):
+\begin{align}
+    g(x) &= (x + \alpha^0)(x + \alpha^1)(x + \alpha^2)(x + \alpha^3)(x + \alpha^4)(x + \alpha^5)(x + \alpha^6) \\
+         &= (x + 1)(x + 2)(x + 4)(x + 8)(x + 16)(x + 32)(x + 64)
+\end{align}
+
+Expanding (all arithmetic in $GF(256)$):
+\begin{equation}
+    g(x) = x^7 + \alpha^{87}x^6 + \alpha^{229}x^5 + \alpha^{146}x^4 + \alpha^{149}x^3 + \alpha^{238}x^2 + \alpha^{102}x + \alpha^{21}
+\end{equation}
+\end{example}
+
+\subsection{Encoding Process}
+
+Given a message polynomial $m(x)$ of degree $k-1$:
+
+\begin{enumerate}
+    \item Multiply $m(x)$ by $x^t$ to make room for EC codewords
+    \item Divide by $g(x)$ to get remainder $r(x)$
+    \item The encoded message is $m(x) \cdot x^t + r(x)$
+\end{enumerate}
+
+This is called \textbf{systematic encoding} because the original message appears unchanged at the beginning.
+
+\subsection{Mathematical Formulation}
+
+\begin{align}
+    \text{Dividend: } & d(x) = m(x) \cdot x^t \\
+    \text{Division: } & d(x) = q(x) \cdot g(x) + r(x) \\
+    \text{Codeword: } & c(x) = d(x) - r(x) = d(x) + r(x)
+\end{align}
+
+Since addition and subtraction are the same in $GF(2^8)$, and $c(x)$ is divisible by $g(x)$, any valid codeword will have $c(x) \mod g(x) = 0$.
+
+\subsection{Python Implementation: Reed-Solomon Encoder}
+
+\begin{lstlisting}[language=Python, caption=Reed-Solomon Encoder]
+"""
+Reed-Solomon Error Correction Encoder for QR Codes.
+"""
+
+class ReedSolomonEncoder:
+    """Reed-Solomon encoder for QR code error correction."""
+    
+    def __init__(self, gf_instance):
+        self.gf = gf_instance
+        self._generator_cache = {}
+    
+    def build_generator(self, num_ec_codewords):
+        """
+        Build generator polynomial for given number of EC codewords.
+        
+        g(x) = (x - alpha^0)(x - alpha^1)...(x - alpha^(n-1))
+        """
+        if num_ec_codewords in self._generator_cache:
+            return self._generator_cache[num_ec_codewords]
+        
+        # Start with g(x) = 1
+        gen = Polynomial([1], self.gf)
+        
+        for i in range(num_ec_codewords):
+            # Multiply by (x + alpha^i)
+            # This is [alpha^i, 1] as coefficients for alpha^i + x
+            factor = Polynomial([self.gf.exp_table[i], 1], self.gf)
+            gen = gen.multiply(factor)
+        
+        self._generator_cache[num_ec_codewords] = gen
+        return gen
+    
+    def encode(self, data, num_ec_codewords):
+        """
+        Encode data bytes with Reed-Solomon error correction.
+        
+        Args:
+            data: List of data bytes (integers 0-255)
+            num_ec_codewords: Number of error correction codewords to generate
+        
+        Returns:
+            List of error correction codewords
+        """
+        generator = self.build_generator(num_ec_codewords)
+        
+        # Create message polynomial m(x) * x^n
+        # Coefficients are in order from x^0 to highest degree
+        # We want the data at the high-degree end
+        message_coeffs = [0] * num_ec_codewords + list(data)
+        message = Polynomial(message_coeffs, self.gf)
+        
+        # Alternative approach: polynomial division
+        # The remainder is our EC codewords
+        
+        # Perform division to get remainder
+        remainder = self._divide_for_remainder(data, generator, num_ec_codewords)
+        
+        return remainder
+    
+    def _divide_for_remainder(self, data, generator, num_ec):
+        """
+        Compute remainder of message polynomial divided by generator.
+        Uses the shift-register approach for efficiency.
+        """
+        # Create extended message with space for EC bytes
+        result = list(data) + [0] * num_ec
+        gen_coeffs = list(reversed(generator.coeffs))  # High degree first
+        
+        # For each data byte
+        for i in range(len(data)):
+            coeff = result[i]
+            if coeff != 0:
+                # XOR generator polynomial (scaled by coeff) into result
+                for j in range(len(gen_coeffs)):
+                    result[i + j] ^= self.gf.multiply(gen_coeffs[j], coeff)
+        
+        # The last num_ec bytes are the remainder (EC codewords)
+        return result[-num_ec:]
+
+
+def demo_reed_solomon():
+    """Demonstrate Reed-Solomon encoding."""
+    gf = GF256()
+    rs = ReedSolomonEncoder(gf)
+    
+    print("=== Reed-Solomon Encoding Demo ===\n")
+    
+    # Example from QR code specification
+    # Version 1-M: 16 data codewords, 10 EC codewords
+    data = [16, 32, 12, 86, 97, 128, 236, 17, 236, 17, 236, 17, 236, 17, 236, 17]
+    num_ec = 10
+    
+    print(f"Data codewords ({len(data)}): {data}")
+    print(f"Number of EC codewords: {num_ec}")
+    
+    # Build generator polynomial
+    generator = rs.build_generator(num_ec)
+    print(f"\nGenerator polynomial degree: {generator.degree}")
+    print(f"Generator coefficients: {generator.coeffs}")
+    
+    # Encode
+    ec_codewords = rs.encode(data, num_ec)
+    print(f"\nError correction codewords: {ec_codewords}")
+    
+    # The complete encoded message
+    complete = data + ec_codewords
+    print(f"\nComplete codeword ({len(complete)} bytes): {complete}")
+
+
+if __name__ == "__main__":
+    demo_reed_solomon()
+\end{lstlisting}
+
+\subsection{References for This Section}
+
+\begin{itemize}
+    \item Wikipedia: Reed-Solomon error correction (\url{https://en.wikipedia.org/wiki/Reed-Solomon_error_correction})
+    \item Thonky: Error Correction Coding (\url{https://www.thonky.com/qr-code-tutorial/error-correction-coding})
+    \item DEV Community: QR Code Generator Part III (\url{https://dev.to/maxart2501/let-s-develop-a-qr-code-generator-part-iii-error-correction-1kbm})
+\end{itemize}
+
+%==============================================================================
+\section{Data Encoding Modes}
+%==============================================================================
+
+QR codes support four primary encoding modes, each optimized for different types of data.
+
+\subsection{Mode Indicators}
+
+Each mode has a 4-bit indicator:
+
+\begin{table}[h]
+\centering
+\caption{Encoding Mode Indicators}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Mode & Indicator (Binary) & Indicator (Decimal) \\
+\midrule
+Numeric & 0001 & 1 \\
+Alphanumeric & 0010 & 2 \\
+Byte & 0100 & 4 \\
+Kanji & 1000 & 8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Character Count Indicator}
+
+The character count indicator length varies by version:
+
+\begin{table}[h]
+\centering
+\caption{Character Count Indicator Bit Lengths}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Mode & V1-9 & V10-26 & V27-40 \\
+\midrule
+Numeric & 10 & 12 & 14 \\
+Alphanumeric & 9 & 11 & 13 \\
+Byte & 8 & 16 & 16 \\
+Kanji & 8 & 10 & 12 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Numeric Mode}
+
+Encodes digits 0-9. Groups of 3 digits are converted to 10-bit binary, groups of 2 to 7-bit, and single digits to 4-bit.
+
+\begin{equation}
+    \text{bits}(d_1 d_2 d_3) = \text{binary}(d_1 \times 100 + d_2 \times 10 + d_3)
+\end{equation}
+
+\subsection{Alphanumeric Mode}
+
+Encodes: 0-9, A-Z (uppercase only), space, \$, \%, *, +, -, ., /, :
+
+Character values are assigned 0-44, and pairs of characters encode to 11 bits:
+
+\begin{equation}
+    \text{bits}(c_1, c_2) = 45 \times \text{value}(c_1) + \text{value}(c_2)
+\end{equation}
+
+\begin{table}[h]
+\centering
+\caption{Alphanumeric Character Values}
+\begin{tabular}{@{}cccccccccc@{}}
+\toprule
+0-9 & A & B & ... & Z & (space) & \$ & \% & * & + \\
+\midrule
+0-9 & 10 & 11 & ... & 35 & 36 & 37 & 38 & 39 & 40 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Byte Mode}
+
+Encodes any 8-bit byte. Default encoding is ISO-8859-1, but UTF-8 can be used (not all readers support it).
+
+Each character is simply encoded as its 8-bit value.
+
+\subsection{Python Implementation: Data Encoding}
+
+\begin{lstlisting}[language=Python, caption=Data Encoding for QR Codes]
+"""
+Data encoding modes for QR codes.
+"""
+
+# Mode indicators
+MODE_NUMERIC = 0b0001
+MODE_ALPHANUMERIC = 0b0010
+MODE_BYTE = 0b0100
+MODE_KANJI = 0b1000
+MODE_TERMINATOR = 0b0000
+
+# Alphanumeric character table
+ALPHANUMERIC_TABLE = {
+    '0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
+    '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+    'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14,
+    'F': 15, 'G': 16, 'H': 17, 'I': 18, 'J': 19,
+    'K': 20, 'L': 21, 'M': 22, 'N': 23, 'O': 24,
+    'P': 25, 'Q': 26, 'R': 27, 'S': 28, 'T': 29,
+    'U': 30, 'V': 31, 'W': 32, 'X': 33, 'Y': 34,
+    'Z': 35, ' ': 36, '$': 37, '%': 38, '*': 39,
+    '+': 40, '-': 41, '.': 42, '/': 43, ':': 44
+}
+
+
+def get_character_count_bits(version, mode):
+    """Get the number of bits for the character count indicator."""
+    if version <= 9:
+        table = {MODE_NUMERIC: 10, MODE_ALPHANUMERIC: 9, 
+                 MODE_BYTE: 8, MODE_KANJI: 8}
+    elif version <= 26:
+        table = {MODE_NUMERIC: 12, MODE_ALPHANUMERIC: 11, 
+                 MODE_BYTE: 16, MODE_KANJI: 10}
+    else:
+        table = {MODE_NUMERIC: 14, MODE_ALPHANUMERIC: 13, 
+                 MODE_BYTE: 16, MODE_KANJI: 12}
+    return table[mode]
+
+
+def detect_mode(data):
+    """Detect the most efficient encoding mode for the data."""
+    # Check if all numeric
+    if all(c.isdigit() for c in data):
+        return MODE_NUMERIC
+    
+    # Check if all alphanumeric
+    if all(c in ALPHANUMERIC_TABLE for c in data):
+        return MODE_ALPHANUMERIC
+    
+    # Default to byte mode
+    return MODE_BYTE
+
+
+def encode_numeric(data):
+    """Encode numeric data. Returns list of bits."""
+    bits = []
+    
+    # Process in groups of 3
+    i = 0
+    while i < len(data):
+        if i + 3 <= len(data):
+            # Three digits -> 10 bits
+            value = int(data[i:i+3])
+            bits.extend(int_to_bits(value, 10))
+            i += 3
+        elif i + 2 <= len(data):
+            # Two digits -> 7 bits
+            value = int(data[i:i+2])
+            bits.extend(int_to_bits(value, 7))
+            i += 2
+        else:
+            # One digit -> 4 bits
+            value = int(data[i])
+            bits.extend(int_to_bits(value, 4))
+            i += 1
+    
+    return bits
+
+
+def encode_alphanumeric(data):
+    """Encode alphanumeric data. Returns list of bits."""
+    bits = []
+    
+    # Process in pairs
+    i = 0
+    while i < len(data):
+        if i + 2 <= len(data):
+            # Pair -> 11 bits
+            v1 = ALPHANUMERIC_TABLE[data[i]]
+            v2 = ALPHANUMERIC_TABLE[data[i + 1]]
+            value = 45 * v1 + v2
+            bits.extend(int_to_bits(value, 11))
+            i += 2
+        else:
+            # Single character -> 6 bits
+            value = ALPHANUMERIC_TABLE[data[i]]
+            bits.extend(int_to_bits(value, 6))
+            i += 1
+    
+    return bits
+
+
+def encode_byte(data):
+    """Encode byte data. Returns list of bits."""
+    bits = []
+    
+    # Convert to bytes (UTF-8 or ISO-8859-1)
+    if isinstance(data, str):
+        data = data.encode('utf-8')
+    
+    for byte in data:
+        bits.extend(int_to_bits(byte, 8))
+    
+    return bits
+
+
+def int_to_bits(value, length):
+    """Convert integer to list of bits with specified length."""
+    return [(value >> (length - 1 - i)) & 1 for i in range(length)]
+
+
+def bits_to_bytes(bits):
+    """Convert list of bits to list of bytes."""
+    # Pad to multiple of 8
+    while len(bits) % 8 != 0:
+        bits.append(0)
+    
+    bytes_list = []
+    for i in range(0, len(bits), 8):
+        byte = 0
+        for j in range(8):
+            byte = (byte << 1) | bits[i + j]
+        bytes_list.append(byte)
+    
+    return bytes_list
+
+
+def encode_data(data, version, mode=None):
+    """
+    Encode data for QR code.
+    
+    Returns: List of bits including mode indicator and character count.
+    """
+    if mode is None:
+        mode = detect_mode(data)
+    
+    bits = []
+    
+    # Mode indicator (4 bits)
+    bits.extend(int_to_bits(mode, 4))
+    
+    # Character count indicator
+    count_bits = get_character_count_bits(version, mode)
+    char_count = len(data.encode('utf-8') if mode == MODE_BYTE else data)
+    bits.extend(int_to_bits(char_count, count_bits))
+    
+    # Data encoding
+    if mode == MODE_NUMERIC:
+        bits.extend(encode_numeric(data))
+    elif mode == MODE_ALPHANUMERIC:
+        bits.extend(encode_alphanumeric(data))
+    else:  # MODE_BYTE
+        bits.extend(encode_byte(data))
+    
+    return bits
+
+
+def demo_encoding():
+    """Demonstrate data encoding."""
+    print("=== Data Encoding Demo ===\n")
+    
+    # Test numeric
+    data_num = "12345"
+    bits_num = encode_data(data_num, 1, MODE_NUMERIC)
+    print(f"Numeric '{data_num}': {len(bits_num)} bits")
+    
+    # Test alphanumeric
+    data_alpha = "HELLO WORLD"
+    bits_alpha = encode_data(data_alpha, 1, MODE_ALPHANUMERIC)
+    print(f"Alphanumeric '{data_alpha}': {len(bits_alpha)} bits")
+    
+    # Test byte
+    data_byte = "Hello, World!"
+    bits_byte = encode_data(data_byte, 1, MODE_BYTE)
+    print(f"Byte '{data_byte}': {len(bits_byte)} bits")
+
+
+if __name__ == "__main__":
+    demo_encoding()
+\end{lstlisting}
+
+\subsection{References for This Section}
+
+\begin{itemize}
+    \item Thonky: Data Analysis (\url{https://www.thonky.com/qr-code-tutorial/data-analysis})
+    \item GeeksforGeeks: Introduction to Python qrcode Library (\url{https://www.geeksforgeeks.org/introduction-to-python-qrcode-library/})
+\end{itemize}
+
+%==============================================================================
+\section{BCH Code for Format Information}
+%==============================================================================
+
+The format information in a QR code is protected by a BCH (Bose-Chaudhuri-Hocquenghem) code, which is simpler than Reed-Solomon but also based on polynomial arithmetic.
+
+\subsection{Format Information Structure}
+
+Format information consists of 15 bits:
+\begin{itemize}
+    \item 2 bits: Error correction level (L=01, M=00, Q=11, H=10)
+    \item 3 bits: Mask pattern (0-7)
+    \item 10 bits: BCH error correction
+\end{itemize}
+
+\subsection{The (15, 5) BCH Code}
+
+The generator polynomial for the format BCH code is:
+
+\begin{equation}
+    g(x) = x^{10} + x^8 + x^5 + x^4 + x^2 + x + 1
+\end{equation}
+
+In binary: $10100110111_2$.
+
+This code:
+\begin{itemize}
+    \item Has 5 data bits and 10 parity bits
+    \item Minimum Hamming distance of 7
+    \item Can correct up to 3 bit errors
+\end{itemize}
+
+\subsection{Encoding Process}
+
+\begin{enumerate}
+    \item Take 5-bit format data (2 bits EC level + 3 bits mask)
+    \item Multiply by $x^{10}$ (append 10 zeros)
+    \item Divide by generator polynomial, take remainder
+    \item Append remainder to original 5 bits
+    \item XOR with mask pattern: $101010000010010$
+\end{enumerate}
+
+\subsection{Python Implementation: BCH Code}
+
+\begin{lstlisting}[language=Python, caption=BCH Code for Format Information]
+"""
+BCH code for QR code format information.
+"""
+
+# BCH generator polynomial: x^10 + x^8 + x^5 + x^4 + x^2 + x + 1
+BCH_GENERATOR = 0b10100110111
+
+# Format mask pattern
+FORMAT_MASK = 0b101010000010010
+
+# Error correction level bits
+EC_LEVEL_BITS = {
+    'L': 0b01,
+    'M': 0b00,
+    'Q': 0b11,
+    'H': 0b10
+}
+
+
+def bch_encode(data_5bits):
+    """
+    Encode 5 data bits using (15,5) BCH code.
+    
+    Args:
+        data_5bits: 5-bit integer (EC level 2 bits + mask pattern 3 bits)
+    
+    Returns:
+        15-bit encoded format information (before final XOR)
+    """
+    # Multiply by x^10 (shift left 10 positions)
+    dividend = data_5bits << 10
+    
+    # Polynomial division to get remainder
+    remainder = dividend
+    for i in range(14, 9, -1):  # From bit 14 down to bit 10
+        if remainder & (1 << i):  # If bit i is set
+            remainder ^= BCH_GENERATOR << (i - 10)
+    
+    # Combine: original data + remainder
+    return (data_5bits << 10) | remainder
+
+
+def get_format_string(ec_level, mask_pattern):
+    """
+    Generate the complete 15-bit format string.
+    
+    Args:
+        ec_level: Error correction level ('L', 'M', 'Q', 'H')
+        mask_pattern: Mask pattern number (0-7)
+    
+    Returns:
+        15-bit format string after XOR with mask
+    """
+    # Combine EC level and mask pattern
+    data_5bits = (EC_LEVEL_BITS[ec_level] << 3) | mask_pattern
+    
+    # BCH encode
+    encoded = bch_encode(data_5bits)
+    
+    # XOR with format mask
+    return encoded ^ FORMAT_MASK
+
+
+def format_bits_to_list(format_int):
+    """Convert 15-bit integer to list of bits."""
+    return [(format_int >> (14 - i)) & 1 for i in range(15)]
+
+
+# Pre-computed format strings (for lookup)
+FORMAT_STRINGS = {}
+for ec in ['L', 'M', 'Q', 'H']:
+    for mask in range(8):
+        FORMAT_STRINGS[(ec, mask)] = get_format_string(ec, mask)
+
+
+def demo_bch():
+    """Demonstrate BCH encoding for format information."""
+    print("=== BCH Format Information Demo ===\n")
+    
+    # Example: EC level M, mask pattern 0
+    ec_level = 'M'
+    mask = 0
+    
+    data_bits = (EC_LEVEL_BITS[ec_level] << 3) | mask
+    print(f"EC Level: {ec_level}, Mask: {mask}")
+    print(f"5-bit data: {bin(data_bits)[2:].zfill(5)}")
+    
+    encoded = bch_encode(data_bits)
+    print(f"After BCH (15 bits): {bin(encoded)[2:].zfill(15)}")
+    
+    final = encoded ^ FORMAT_MASK
+    print(f"After XOR mask: {bin(final)[2:].zfill(15)}")
+    
+    # Show all format strings
+    print("\nAll format strings:")
+    for ec in ['L', 'M', 'Q', 'H']:
+        for mask in range(8):
+            fs = FORMAT_STRINGS[(ec, mask)]
+            print(f"  {ec}-{mask}: {bin(fs)[2:].zfill(15)}")
+
+
+if __name__ == "__main__":
+    demo_bch()
+\end{lstlisting}
+
+\subsection{References for This Section}
+
+\begin{itemize}
+    \item Wikipedia: BCH code (\url{https://en.wikipedia.org/wiki/BCH_code})
+    \item Thonky: Format and Version Information (\url{https://www.thonky.com/qr-code-tutorial/format-version-information})
+\end{itemize}
+
+%==============================================================================
+\section{QR Code Matrix Construction}
+%==============================================================================
+
+The QR code matrix contains both function patterns (required for detection and alignment) and data modules.
+
+\subsection{Function Patterns}
+
+\subsubsection{Finder Patterns}
+
+Three $7 \times 7$ patterns in corners with ratio $1:1:3:1:1$:
+
+\begin{center}
+\begin{tikzpicture}[scale=0.3]
+    % Outer black square
+    \fill[black] (0,0) rectangle (7,7);
+    % White square
+    \fill[white] (1,1) rectangle (6,6);
+    % Inner black square
+    \fill[black] (2,2) rectangle (5,5);
+\end{tikzpicture}
+\end{center}
+
+Location: top-left at $(0,0)$, top-right at $(size-7, 0)$, bottom-left at $(0, size-7)$.
+
+\subsubsection{Separators}
+
+One-module-wide white borders around finder patterns.
+
+\subsubsection{Timing Patterns}
+
+Alternating black-white modules in row 6 and column 6, connecting finder patterns.
+
+\subsubsection{Alignment Patterns}
+
+$5 \times 5$ patterns for versions 2+. Positions defined in specification.
+
+\subsubsection{Dark Module}
+
+Single dark module at position $(8, 4V + 9)$ where $V$ is version.
+
+\subsection{Data Placement Algorithm}
+
+Data is placed in a zigzag pattern:
+
+\begin{enumerate}
+    \item Start at bottom-right corner
+    \item Move in 2-column-wide strips from right to left
+    \item Within each strip, alternate up and down
+    \item Skip function pattern areas
+\end{enumerate}
+
+\subsection{Python Implementation: Matrix Construction}
+
+\begin{lstlisting}[language=Python, caption=QR Code Matrix Construction]
+"""
+QR Code matrix construction with function patterns and data placement.
+"""
+
+class QRMatrix:
+    """QR Code matrix construction and manipulation."""
+    
+    def __init__(self, version):
+        self.version = version
+        self.size = 4 * version + 17
+        
+        # Matrix values: None=unassigned, 0=white, 1=black
+        self.matrix = [[None] * self.size for _ in range(self.size)]
+        
+        # Track which modules are function patterns (cannot be masked)
+        self.is_function = [[False] * self.size for _ in range(self.size)]
+        
+        self._place_function_patterns()
+    
+    def _place_function_patterns(self):
+        """Place all function patterns."""
+        self._place_finder_patterns()
+        self._place_separators()
+        self._place_timing_patterns()
+        self._place_alignment_patterns()
+        self._place_dark_module()
+        self._reserve_format_area()
+        if self.version >= 7:
+            self._reserve_version_area()
+    
+    def _place_finder_patterns(self):
+        """Place the three finder patterns."""
+        positions = [
+            (0, 0),                          # Top-left
+            (self.size - 7, 0),              # Top-right
+            (0, self.size - 7)               # Bottom-left
+        ]
+        
+        for (x, y) in positions:
+            self._place_finder_pattern(x, y)
+    
+    def _place_finder_pattern(self, x, y):
+        """Place a single finder pattern at position (x, y)."""
+        for dy in range(7):
+            for dx in range(7):
+                # Determine if this module should be black
+                if (dy == 0 or dy == 6 or dx == 0 or dx == 6 or
+                    (2 <= dx <= 4 and 2 <= dy <= 4)):
+                    value = 1
+                else:
+                    value = 0
+                
+                self.matrix[y + dy][x + dx] = value
+                self.is_function[y + dy][x + dx] = True
+    
+    def _place_separators(self):
+        """Place white separators around finder patterns."""
+        # Horizontal separators
+        for x in range(8):
+            if x < self.size:
+                self._set_function(x, 7, 0)           # Top-left
+                self._set_function(self.size-8+x, 7, 0)  # Top-right
+                self._set_function(x, self.size-8, 0)    # Bottom-left
+        
+        # Vertical separators
+        for y in range(8):
+            if y < self.size:
+                self._set_function(7, y, 0)           # Top-left
+                self._set_function(self.size-8, y, 0) # Top-right
+                self._set_function(7, self.size-8+y, 0)  # Bottom-left
+    
+    def _place_timing_patterns(self):
+        """Place timing patterns (row 6 and column 6)."""
+        for i in range(8, self.size - 8):
+            value = (i + 1) % 2  # Alternating pattern
+            self._set_function(i, 6, value)  # Horizontal
+            self._set_function(6, i, value)  # Vertical
+    
+    def _place_alignment_patterns(self):
+        """Place alignment patterns for version 2+."""
+        if self.version < 2:
+            return
+        
+        positions = self._get_alignment_positions()
+        
+        for row in positions:
+            for col in positions:
+                # Skip if overlapping with finder patterns
+                if self._overlaps_finder(row, col):
+                    continue
+                self._place_alignment_pattern(col, row)
+    
+    def _get_alignment_positions(self):
+        """Get alignment pattern center positions for this version."""
+        # Simplified - full table should be used from specification
+        if self.version == 1:
+            return []
+        
+        # Calculate positions (simplified algorithm)
+        first = 6
+        last = self.size - 7
+        
+        if self.version == 2:
+            return [6, 18]
+        
+        # For larger versions, calculate intermediate positions
+        step = (last - first) // ((self.version // 7) + 1)
+        step = ((step + 1) // 2) * 2  # Round to even
+        
+        positions = [first]
+        pos = last
+        while pos > first + step:
+            positions.insert(1, pos)
+            pos -= step
+        positions.append(last)
+        
+        return positions
+    
+    def _overlaps_finder(self, row, col):
+        """Check if alignment pattern would overlap finder patterns."""
+        # Top-left finder: (0,0) to (8,8)
+        if row <= 8 and col <= 8:
+            return True
+        # Top-right finder
+        if row <= 8 and col >= self.size - 9:
+            return True
+        # Bottom-left finder
+        if row >= self.size - 9 and col <= 8:
+            return True
+        return False
+    
+    def _place_alignment_pattern(self, x, y):
+        """Place a single alignment pattern centered at (x, y)."""
+        for dy in range(-2, 3):
+            for dx in range(-2, 3):
+                if abs(dy) == 2 or abs(dx) == 2 or (dy == 0 and dx == 0):
+                    value = 1
+                else:
+                    value = 0
+                self._set_function(x + dx, y + dy, value)
+    
+    def _place_dark_module(self):
+        """Place the dark module (always black)."""
+        x, y = 8, 4 * self.version + 9
+        self._set_function(x, y, 1)
+    
+    def _reserve_format_area(self):
+        """Reserve space for format information."""
+        # Around top-left finder
+        for i in range(9):
+            self.is_function[8][i] = True
+            self.is_function[i][8] = True
+        
+        # Below top-right finder and right of bottom-left finder
+        for i in range(8):
+            self.is_function[8][self.size - 1 - i] = True
+            self.is_function[self.size - 1 - i][8] = True
+    
+    def _reserve_version_area(self):
+        """Reserve space for version information (version 7+)."""
+        for i in range(6):
+            for j in range(3):
+                self.is_function[i][self.size - 11 + j] = True
+                self.is_function[self.size - 11 + j][i] = True
+    
+    def _set_function(self, x, y, value):
+        """Set a function pattern module."""
+        if 0 <= x < self.size and 0 <= y < self.size:
+            self.matrix[y][x] = value
+            self.is_function[y][x] = True
+    
+    def place_data(self, data_bits):
+        """Place data bits in zigzag pattern."""
+        bit_index = 0
+        
+        # Start from bottom-right, moving left in 2-column strips
+        x = self.size - 1
+        upward = True
+        
+        while x >= 0:
+            # Skip column 6 (timing pattern)
+            if x == 6:
+                x -= 1
+            
+            for y in range(self.size - 1, -1, -1) if upward else range(self.size):
+                for dx in [0, -1]:
+                    col = x + dx
+                    if col < 0:
+                        continue
+                    
+                    # Skip function pattern modules
+                    if self.is_function[y][col]:
+                        continue
+                    
+                    # Place data bit (or 0 if we've run out)
+                    if bit_index < len(data_bits):
+                        self.matrix[y][col] = data_bits[bit_index]
+                        bit_index += 1
+                    else:
+                        self.matrix[y][col] = 0
+            
+            x -= 2
+            upward = not upward
+        
+        return bit_index
+    
+    def to_string(self):
+        """Convert matrix to string representation."""
+        result = []
+        for row in self.matrix:
+            line = ""
+            for cell in row:
+                if cell == 1:
+                    line += "##"
+                elif cell == 0:
+                    line += "  "
+                else:
+                    line += ".."
+            result.append(line)
+        return "\n".join(result)
+
+
+def demo_matrix():
+    """Demonstrate matrix construction."""
+    print("=== QR Matrix Construction Demo ===\n")
+    
+    matrix = QRMatrix(1)  # Version 1 (21x21)
+    print(f"Version 1 matrix ({matrix.size}x{matrix.size}):")
+    print(matrix.to_string())
+
+
+if __name__ == "__main__":
+    demo_matrix()
+\end{lstlisting}
+
+\subsection{References for This Section}
+
+\begin{itemize}
+    \item Thonky: Module Placement in Matrix (\url{https://www.thonky.com/qr-code-tutorial/module-placement-matrix})
+    \item Nayuki: Creating a QR Code step by step (\url{https://www.nayuki.io/page/creating-a-qr-code-step-by-step})
+\end{itemize}
+
+%==============================================================================
+\section{Data Masking}
+%==============================================================================
+
+Masking XORs data modules with a pattern to avoid problematic patterns.
+
+\subsection{Mask Patterns}
+
+There are 8 mask patterns, each defined by a formula:
+
+\begin{table}[h]
+\centering
+\caption{Mask Pattern Formulas (dark if formula is true)}
+\begin{tabular}{@{}cl@{}}
+\toprule
+Pattern & Condition (row $r$, column $c$) \\
+\midrule
+0 & $(r + c) \mod 2 = 0$ \\
+1 & $r \mod 2 = 0$ \\
+2 & $c \mod 3 = 0$ \\
+3 & $(r + c) \mod 3 = 0$ \\
+4 & $(\lfloor r/2 \rfloor + \lfloor c/3 \rfloor) \mod 2 = 0$ \\
+5 & $(r \cdot c) \mod 2 + (r \cdot c) \mod 3 = 0$ \\
+6 & $((r \cdot c) \mod 2 + (r \cdot c) \mod 3) \mod 2 = 0$ \\
+7 & $((r + c) \mod 2 + (r \cdot c) \mod 3) \mod 2 = 0$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Penalty Calculation}
+
+The optimal mask is chosen by minimizing penalty score:
+
+\begin{enumerate}
+    \item \textbf{Runs}: 3 points + (N-5) for each run of $N \geq 5$ same-color modules
+    \item \textbf{Boxes}: 3 points for each $2 \times 2$ block of same color
+    \item \textbf{Finder-like}: 40 points for patterns resembling finder patterns
+    \item \textbf{Balance}: Points based on proportion of dark modules
+\end{enumerate}
+
+\subsection{Python Implementation: Masking}
+
+\begin{lstlisting}[language=Python, caption=Mask Pattern Application and Penalty Calculation]
+"""
+Data masking for QR codes.
+"""
+
+MASK_PATTERNS = [
+    lambda r, c: (r + c) % 2 == 0,
+    lambda r, c: r % 2 == 0,
+    lambda r, c: c % 3 == 0,
+    lambda r, c: (r + c) % 3 == 0,
+    lambda r, c: (r // 2 + c // 3) % 2 == 0,
+    lambda r, c: (r * c) % 2 + (r * c) % 3 == 0,
+    lambda r, c: ((r * c) % 2 + (r * c) % 3) % 2 == 0,
+    lambda r, c: ((r + c) % 2 + (r * c) % 3) % 2 == 0,
+]
+
+
+def apply_mask(matrix, is_function, mask_num):
+    """Apply mask pattern to data modules only."""
+    size = len(matrix)
+    result = [row[:] for row in matrix]  # Copy
+    mask_func = MASK_PATTERNS[mask_num]
+    
+    for r in range(size):
+        for c in range(size):
+            if not is_function[r][c] and mask_func(r, c):
+                result[r][c] ^= 1
+    
+    return result
+
+
+def calculate_penalty(matrix):
+    """Calculate total penalty score for a masked matrix."""
+    size = len(matrix)
+    penalty = 0
+    
+    # Penalty 1: Runs of same color
+    penalty += _penalty_runs(matrix, size)
+    
+    # Penalty 2: 2x2 boxes
+    penalty += _penalty_boxes(matrix, size)
+    
+    # Penalty 3: Finder-like patterns
+    penalty += _penalty_finder_like(matrix, size)
+    
+    # Penalty 4: Dark/light balance
+    penalty += _penalty_balance(matrix, size)
+    
+    return penalty
+
+
+def _penalty_runs(matrix, size):
+    """Penalty for runs of 5+ same-color modules."""
+    penalty = 0
+    
+    for r in range(size):
+        # Horizontal
+        run_length = 1
+        for c in range(1, size):
+            if matrix[r][c] == matrix[r][c-1]:
+                run_length += 1
+            else:
+                if run_length >= 5:
+                    penalty += 3 + (run_length - 5)
+                run_length = 1
+        if run_length >= 5:
+            penalty += 3 + (run_length - 5)
+    
+    for c in range(size):
+        # Vertical
+        run_length = 1
+        for r in range(1, size):
+            if matrix[r][c] == matrix[r-1][c]:
+                run_length += 1
+            else:
+                if run_length >= 5:
+                    penalty += 3 + (run_length - 5)
+                run_length = 1
+        if run_length >= 5:
+            penalty += 3 + (run_length - 5)
+    
+    return penalty
+
+
+def _penalty_boxes(matrix, size):
+    """Penalty for 2x2 same-color boxes."""
+    penalty = 0
+    for r in range(size - 1):
+        for c in range(size - 1):
+            color = matrix[r][c]
+            if (matrix[r][c+1] == color and 
+                matrix[r+1][c] == color and 
+                matrix[r+1][c+1] == color):
+                penalty += 3
+    return penalty
+
+
+def _penalty_finder_like(matrix, size):
+    """Penalty for patterns similar to finder patterns."""
+    penalty = 0
+    pattern1 = [1, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0]
+    pattern2 = [0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1]
+    
+    for r in range(size):
+        for c in range(size - 10):
+            # Check horizontal
+            if [matrix[r][c+i] for i in range(11)] in [pattern1, pattern2]:
+                penalty += 40
+    
+    for c in range(size):
+        for r in range(size - 10):
+            # Check vertical
+            if [matrix[r+i][c] for i in range(11)] in [pattern1, pattern2]:
+                penalty += 40
+    
+    return penalty
+
+
+def _penalty_balance(matrix, size):
+    """Penalty based on dark/light module ratio."""
+    dark_count = sum(sum(row) for row in matrix)
+    total = size * size
+    percent = (dark_count * 100) // total
+    
+    # Penalty based on deviation from 50%
+    prev_multiple = percent - (percent % 5)
+    next_multiple = prev_multiple + 5
+    
+    penalty = min(
+        abs(prev_multiple - 50) // 5,
+        abs(next_multiple - 50) // 5
+    ) * 10
+    
+    return penalty
+
+
+def choose_best_mask(matrix, is_function):
+    """Choose the mask pattern with lowest penalty."""
+    best_mask = 0
+    best_penalty = float('inf')
+    
+    for mask_num in range(8):
+        masked = apply_mask(matrix, is_function, mask_num)
+        penalty = calculate_penalty(masked)
+        
+        if penalty < best_penalty:
+            best_penalty = penalty
+            best_mask = mask_num
+    
+    return best_mask, best_penalty
+
+
+def demo_masking():
+    """Demonstrate masking patterns."""
+    print("=== Masking Demo ===\n")
+    
+    # Create a simple test matrix
+    size = 7
+    matrix = [[0] * size for _ in range(size)]
+    is_function = [[False] * size for _ in range(size)]
+    
+    for mask_num in range(8):
+        print(f"Mask Pattern {mask_num}:")
+        masked = apply_mask(matrix, is_function, mask_num)
+        for row in masked:
+            print("".join("##" if c else "  " for c in row))
+        print()
+
+
+if __name__ == "__main__":
+    demo_masking()
+\end{lstlisting}
+
+%==============================================================================
+\section{Complete QR Code Generator}
+%==============================================================================
+
+Now we combine all components into a complete QR code generator.
+
+\subsection{Complete Implementation}
+
+\begin{lstlisting}[language=Python, caption=Complete QR Code Generator]
+"""
+Complete QR Code Generator from Scratch
+
+This module combines all components to generate valid QR codes.
+"""
+
+# [Previous class definitions would be included here]
+
+
+class QRCodeGenerator:
+    """Complete QR code generator."""
+    
+    # Error correction codewords per version and level
+    EC_CODEWORDS = {
+        1: {'L': 7, 'M': 10, 'Q': 13, 'H': 17},
+        2: {'L': 10, 'M': 16, 'Q': 22, 'H': 28},
+        # ... extend for all versions
+    }
+    
+    # Data capacity (bytes) per version and level
+    DATA_CAPACITY = {
+        1: {'L': 19, 'M': 16, 'Q': 13, 'H': 9},
+        2: {'L': 34, 'M': 28, 'Q': 22, 'H': 16},
+        # ... extend for all versions
+    }
+    
+    def __init__(self, ec_level='M'):
+        self.ec_level = ec_level
+        self.gf = GF256()
+        self.rs = ReedSolomonEncoder(self.gf)
+    
+    def generate(self, data, version=None):
+        """
+        Generate a QR code for the given data.
+        
+        Returns: 2D list of 0s and 1s representing the QR code
+        """
+        # Step 1: Determine version if not specified
+        if version is None:
+            version = self._determine_version(data)
+        
+        # Step 2: Encode data
+        data_bits = encode_data(data, version)
+        
+        # Step 3: Add terminator and padding
+        data_codewords = self._pad_data(data_bits, version)
+        
+        # Step 4: Generate error correction
+        num_ec = self.EC_CODEWORDS[version][self.ec_level]
+        ec_codewords = self.rs.encode(data_codewords, num_ec)
+        
+        # Step 5: Interleave (for version 1, just concatenate)
+        final_message = data_codewords + ec_codewords
+        
+        # Step 6: Convert to bits
+        final_bits = []
+        for byte in final_message:
+            final_bits.extend(int_to_bits(byte, 8))
+        
+        # Step 7: Create matrix and place patterns
+        qr = QRMatrix(version)
+        
+        # Step 8: Place data
+        qr.place_data(final_bits)
+        
+        # Step 9: Apply best mask
+        best_mask, _ = choose_best_mask(qr.matrix, qr.is_function)
+        final_matrix = apply_mask(qr.matrix, qr.is_function, best_mask)
+        
+        # Step 10: Add format information
+        self._add_format_info(final_matrix, qr.is_function, best_mask)
+        
+        return final_matrix
+    
+    def _determine_version(self, data):
+        """Determine minimum version for the data."""
+        mode = detect_mode(data)
+        data_len = len(data)
+        
+        for version in range(1, 41):
+            capacity = self.DATA_CAPACITY.get(version, {}).get(self.ec_level, 0)
+            if capacity >= data_len:
+                return version
+        
+        raise ValueError("Data too long for any QR version")
+    
+    def _pad_data(self, data_bits, version):
+        """Pad data to required length."""
+        # Add terminator
+        data_bits = list(data_bits)
+        capacity = self.DATA_CAPACITY[version][self.ec_level] * 8
+        
+        # Add up to 4 terminator bits
+        term_bits = min(4, capacity - len(data_bits))
+        data_bits.extend([0] * term_bits)
+        
+        # Pad to byte boundary
+        while len(data_bits) % 8 != 0:
+            data_bits.append(0)
+        
+        # Convert to bytes
+        codewords = bits_to_bytes(data_bits)
+        
+        # Add pad codewords (alternating 236, 17)
+        pad_bytes = [236, 17]
+        i = 0
+        while len(codewords) < self.DATA_CAPACITY[version][self.ec_level]:
+            codewords.append(pad_bytes[i % 2])
+            i += 1
+        
+        return codewords
+    
+    def _add_format_info(self, matrix, is_function, mask):
+        """Add format information to the matrix."""
+        format_bits = format_bits_to_list(
+            get_format_string(self.ec_level, mask)
+        )
+        
+        size = len(matrix)
+        
+        # Place format bits around top-left finder
+        positions_primary = [
+            # Horizontal (row 8, left side)
+            (8, 0), (8, 1), (8, 2), (8, 3), (8, 4), (8, 5), 
+            (8, 7), (8, 8),
+            # Vertical (column 8, top)
+            (7, 8), (5, 8), (4, 8), (3, 8), (2, 8), (1, 8), (0, 8)
+        ]
+        
+        positions_secondary = [
+            # Vertical (column 8, bottom)
+            (size-1, 8), (size-2, 8), (size-3, 8), (size-4, 8),
+            (size-5, 8), (size-6, 8), (size-7, 8),
+            # Horizontal (row 8, right side)
+            (8, size-8), (8, size-7), (8, size-6), (8, size-5),
+            (8, size-4), (8, size-3), (8, size-2), (8, size-1)
+        ]
+        
+        for i, bit in enumerate(format_bits):
+            if i < len(positions_primary):
+                r, c = positions_primary[i]
+                matrix[r][c] = bit
+        
+        for i, bit in enumerate(format_bits):
+            if i < len(positions_secondary):
+                r, c = positions_secondary[i]
+                matrix[r][c] = bit
+
+
+def demo_complete():
+    """Generate a complete QR code."""
+    print("=== Complete QR Code Generator Demo ===\n")
+    
+    generator = QRCodeGenerator(ec_level='M')
+    
+    data = "HELLO"
+    print(f"Encoding: '{data}'")
+    
+    try:
+        qr = generator.generate(data, version=1)
+        
+        print(f"\nGenerated QR Code ({len(qr)}x{len(qr)}):")
+        for row in qr:
+            print("".join("##" if c else "  " for c in row))
+    except Exception as e:
+        print(f"Error: {e}")
+
+
+if __name__ == "__main__":
+    demo_complete()
+\end{lstlisting}
+
+%==============================================================================
+\section{Conclusion and Further Reading}
+%==============================================================================
+
+This tutorial covered the complete process of QR code generation from mathematical foundations through implementation.
+
+\subsection{Summary of Key Concepts}
+
+\begin{enumerate}
+    \item \textbf{Galois Field Arithmetic}: All QR code math operates in $GF(256)$ using the primitive polynomial $x^8 + x^4 + x^3 + x^2 + 1$
+    
+    \item \textbf{Reed-Solomon Codes}: Error correction uses polynomial division over $GF(256)$ to generate redundant codewords
+    
+    \item \textbf{BCH Codes}: Format information uses a simpler $(15, 5)$ BCH code for error protection
+    
+    \item \textbf{Data Encoding}: Four modes (numeric, alphanumeric, byte, kanji) optimize storage for different data types
+    
+    \item \textbf{Masking}: Eight mask patterns with penalty scoring ensure readability
+\end{enumerate}
+
+\subsection{References and Further Reading}
+
+\subsubsection{Official Standards}
+\begin{itemize}
+    \item ISO/IEC 18004:2015 - QR Code bar code symbology specification
+\end{itemize}
+
+\subsubsection{Tutorials and Guides}
+\begin{itemize}
+    \item Thonky's QR Code Tutorial: \url{https://www.thonky.com/qr-code-tutorial/}
+    \item Wikiversity - Reed-Solomon codes for coders: \url{https://en.wikiversity.org/wiki/Reed-Solomon_codes_for_coders}
+    \item Nayuki - Creating a QR Code step by step: \url{https://www.nayuki.io/page/creating-a-qr-code-step-by-step}
+\end{itemize}
+
+\subsubsection{Python Libraries (for Comparison)}
+\begin{itemize}
+    \item GeeksforGeeks - Generate QR Code using qrcode in Python: \url{https://www.geeksforgeeks.org/generate-qr-code-using-qrcode-in-python/}
+    \item GeeksforGeeks - Python qrcode Library: \url{https://www.geeksforgeeks.org/introduction-to-python-qrcode-library/}
+\end{itemize}
+
+\subsubsection{Mathematical Background}
+\begin{itemize}
+    \item Wikipedia - Reed-Solomon error correction: \url{https://en.wikipedia.org/wiki/Reed-Solomon_error_correction}
+    \item Wikipedia - BCH code: \url{https://en.wikipedia.org/wiki/BCH_code}
+    \item Wikipedia - Finite field arithmetic: \url{https://en.wikipedia.org/wiki/Finite_field_arithmetic}
+    \item Research.swtch.com - Finite Field Arithmetic: \url{https://research.swtch.com/field}
+\end{itemize}
+
+\end{document}
